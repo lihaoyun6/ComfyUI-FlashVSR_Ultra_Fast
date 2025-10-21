@@ -181,17 +181,6 @@ def hash_state_dict_keys(state_dict, with_shape=True):
     keys_str = keys_str.encode(encoding="UTF-8")
     return hashlib.md5(keys_str).hexdigest()
 
-def get_gpu_compute_capability():
-    if not torch.cuda.is_available():
-        return None
-    try:
-        device = torch.cuda.current_device()
-        major, minor = torch.cuda.get_device_capability(device)
-        return (major, minor)
-    except Exception as e:
-        print(f"Warning: Could not detect GPU compute capability: {e}")
-        return None
-    
 def clean_vram():
     gc.collect()
     if torch.cuda.is_available():

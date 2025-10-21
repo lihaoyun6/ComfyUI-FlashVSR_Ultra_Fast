@@ -7,7 +7,7 @@ import os
 import time
 from typing import Tuple, Optional, List
 from einops import rearrange
-from .utils import hash_state_dict_keys, get_gpu_compute_capability
+from .utils import hash_state_dict_keys
 
 try:
     import flash_attn_interface
@@ -20,12 +20,6 @@ try:
     FLASH_ATTN_2_AVAILABLE = True
 except ModuleNotFoundError:
     FLASH_ATTN_2_AVAILABLE = False
-
-capability = get_gpu_compute_capability()
-major, minor = capability
-if capability is None or major < 8:
-    FLASH_ATTN_2_AVAILABLE = False
-    FLASH_ATTN_3_AVAILABLE = False
 
 try:
     from sageattention import sageattn
