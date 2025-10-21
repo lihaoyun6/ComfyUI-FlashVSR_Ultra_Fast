@@ -33,7 +33,7 @@ python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 
 #### models:
 
-- Download the entire `FlashVSR` folder all the files inside it from [here](https://huggingface.co/JunhaoZhuang/FlashVSR) and put it in the `ComfyUI/models`
+- Download the entire `FlashVSR` folder with all the files inside it from [here](https://huggingface.co/JunhaoZhuang/FlashVSR) and put it in the `ComfyUI/models`
 
 ```
 ├── ComfyUI/models/FlashVSR
