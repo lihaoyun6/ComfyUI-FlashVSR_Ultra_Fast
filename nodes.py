@@ -262,7 +262,7 @@ class FlashVSRNode:
                     "step": 8,
                 }),
                 "unload_dit": ("BOOLEAN", {
-                    "default": True,
+                    "default": False,
                     "tooltip": "Unload DiT before decoding to reduce VRAM peak at the cost of speed."
                 }),
                 "sparse_ratio": ("FLOAT", {
