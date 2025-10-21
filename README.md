@@ -23,11 +23,17 @@ Unload DiT before decoding to reduce VRAM peak at the cost of speed.
 
 ## Installation
 
+#### nodes:
+
 ```
 cd ComfyUI/custom_nodes
 git clone https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast.git
 python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 ```
+
+#### models:
+
+- Download the entire `FlashVSR` folder all the files inside it from [here](https://huggingface.co/JunhaoZhuang/FlashVSR) and put it in the `ComfyUI/models`
 
 ## Acknowledgments
 - [FlashVSR](https://github.com/OpenImagingLab/FlashVSR) @OpenImagingLab  

@@ -23,11 +23,15 @@
 
 ## 安装步骤
 
+#### 安装节点:
+
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast.git
 python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 ```
+#### 模型下载:
+- 从[这里](https://huggingface.co/JunhaoZhuang/FlashVSR)下载整个`FlashVSR`文件夹和它里面的所有文件, 并将其放到`ComfyUI/models`目录中。  
 
 ## 致谢
 - [FlashVSR](https://github.com/OpenImagingLab/FlashVSR) @OpenImagingLab  
