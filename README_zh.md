@@ -52,10 +52,11 @@ python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 
 ## 附录
 ### 编译 Block-Sparse-Attention:
-1. 首先确保你安装了 MSVC 编译环境和 CUDAToolkit
-2. 运行下列命令来进行编译安装:
 
-	```bash
+1. 首先确保你安装了 MSVC 编译环境和 CUDAToolkit  
+2. 运行下列命令来进行编译安装:  
+
+```bash
 git clone https://github.com/lihaoyun6/Block-Sparse-Attention
 cd Block-Sparse-Attention
 pip install packaging

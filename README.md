@@ -1,6 +1,6 @@
 # ComfyUI-FlashVSR_Ultra_Fast
 Running FlashVSR on lower VRAM without any artifacts.   
-**[[中文版本](./readme_zh.md)]**
+**[[中文版本](./README_zh.md)]**
 
 ## Preview
 ![](./img/preview.jpg)
@@ -24,8 +24,8 @@ Unload DiT before decoding to reduce VRAM peak at the cost of speed.
 ## Installation
 
 #### nodes:
-⚠️ The precompiled Block-Sparse-Attention is for torch2.7+cu128 and doesn't support torch2.8!  
-⚠️ If you are using PyTorch 2.8 or later, please install Block-Sparse-Attention from the source code.  
+⚠️ The precompiled `Block-Sparse-Attention` whl is for torch2.7+cu128 and doesn't support torch2.8!  
+⚠️ If you are using PyTorch 2.8 or later, please install `Block-Sparse-Attention` from the source code.  
 ⚠️ Refer to the "Compiling Block-Sparse-Attention" section in the appendix below.  
 
 ```bash
@@ -55,10 +55,11 @@ python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 
 ## Appendix
 ### Compiling Block-Sparse-Attention:
-1. First, make sure you have the `MSVC` build environment and `CUDAToolkit` installed.
+
+1. First, make sure you have the `MSVC` build environment and `CUDAToolkit` installed.  
 2. Run the following commands to compile and install:
 
-	```bash
+```bash
 git clone https://github.com/lihaoyun6/Block-Sparse-Attention
 cd Block-Sparse-Attention
 pip install packaging
