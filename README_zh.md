@@ -24,8 +24,12 @@
 ## 安装步骤
 
 #### 安装节点:
+⚠️ 预编译的`Block-Sparse-Attention`安装包仅支持 torch2.7+cu128 环境, 不支持 torch2.8!  
+⚠️ 如果你正在使用 torch2.8 或更高版本, 请在下载本插件前自行编译安装`Block-Sparse-Attention`  
+⚠️ 参考下方附录中的"编译 Block-Sparse-Attention"小节
 
 ```bash
+#如果确定安装的是torch2.7+cu128, 请执行下列命令安装
 cd ComfyUI/custom_nodes
 git clone https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast.git
 python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
@@ -33,7 +37,7 @@ python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 #### 模型下载:
 - 从[这里](https://huggingface.co/JunhaoZhuang/FlashVSR)下载整个`FlashVSR`文件夹和它里面的所有文件, 并将其放到`ComfyUI/models`目录中。  
 
-```
+	```
 ├── ComfyUI/models/FlashVSR
 |     ├── LQ_proj_in.ckpt
 |     ├── TCDecoder.ckpt
@@ -46,3 +50,16 @@ python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 - [Block-Sparse-Attention](https://github.com/mit-han-lab/Block-Sparse-Attention) @mit-han-lab
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) @comfyanonymous
 
+## 附录
+### 编译 Block-Sparse-Attention:
+1. 首先确保你安装了 MSVC 编译环境和 CUDAToolkit
+2. 运行下列命令来进行编译安装:
+
+	```bash
+git clone https://github.com/lihaoyun6/Block-Sparse-Attention
+cd Block-Sparse-Attention
+pip install packaging
+pip install ninja
+set MAX_JOBS=4 #Linux用户请执行: export MAX_JOBS=4
+python setup.py install
+```

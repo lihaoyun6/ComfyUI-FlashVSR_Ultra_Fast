@@ -24,8 +24,13 @@ Unload DiT before decoding to reduce VRAM peak at the cost of speed.
 ## Installation
 
 #### nodes:
+⚠️ The precompiled Block-Sparse-Attention is for torch2.7+cu128 and doesn't support torch2.8!  
+⚠️ If you are using PyTorch 2.8 or later, please install Block-Sparse-Attention from the source code.  
+⚠️ Refer to the "Compiling Block-Sparse-Attention" section in the appendix below.  
 
-```
+```bash
+#If you are using torch2.7+cu128, run the following command to install the nodes:
+
 cd ComfyUI/custom_nodes
 git clone https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast.git
 python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
@@ -47,3 +52,17 @@ python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 - [FlashVSR](https://github.com/OpenImagingLab/FlashVSR) @OpenImagingLab  
 - [Block-Sparse-Attention](https://github.com/mit-han-lab/Block-Sparse-Attention) @mit-han-lab
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) @comfyanonymous
+
+## Appendix
+### Compiling Block-Sparse-Attention:
+1. First, make sure you have the `MSVC` build environment and `CUDAToolkit` installed.
+2. Run the following commands to compile and install:
+
+	```bash
+git clone https://github.com/lihaoyun6/Block-Sparse-Attention
+cd Block-Sparse-Attention
+pip install packaging
+pip install ninja
+set MAX_JOBS=4   # For Linux users, run: export MAX_JOBS=4
+python setup.py install
+```
