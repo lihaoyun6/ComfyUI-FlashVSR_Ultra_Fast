@@ -1,6 +1,6 @@
 # ComfyUI-FlashVSR_Ultra_Fast
 Running FlashVSR on lower VRAM without any artifacts.   
-**[[中文版本](./README_zh.md)]**
+**[[📃中文版本](./README_zh.md)]**
 
 ## Preview
 ![](./img/preview.jpg)

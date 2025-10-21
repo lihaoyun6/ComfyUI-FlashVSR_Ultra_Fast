@@ -1,6 +1,6 @@
 # ComfyUI-FlashVSR_Ultra_Fast
 在低显存环境下运行 FlashVSR，同时保持无伪影高质量输出。  
-**[[English Version](./readme.md)]**
+**[[📃English](./readme.md)]**
 
 ## 预览
 ![](./img/preview.jpg)
@@ -37,7 +37,7 @@ python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 #### 模型下载:
 - 从[这里](https://huggingface.co/JunhaoZhuang/FlashVSR)下载整个`FlashVSR`文件夹和它里面的所有文件, 并将其放到`ComfyUI/models`目录中。  
 
-	```
+```
 ├── ComfyUI/models/FlashVSR
 |     ├── LQ_proj_in.ckpt
 |     ├── TCDecoder.ckpt
