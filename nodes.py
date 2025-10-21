@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import gc
 import math
 import torch
 import folder_paths
@@ -12,15 +11,10 @@ import numpy as np
 import torch.nn.functional as F
 
 from einops import rearrange
-from .src.diffsynth import ModelManager, FlashVSRFullPipeline, FlashVSRTinyPipeline
+from .src.FlashVSR import ModelManager, FlashVSRFullPipeline, FlashVSRTinyPipeline
+from .src.FlashVSR.models.utils import clean_vram
 from .src.utils.utils import Buffer_LQ4x_Proj
 from .src.utils.TCDecoder import build_tcdecoder
-
-def vram_clean():
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
 
 def get_device_list():
     devs = ["auto"]
@@ -34,7 +28,7 @@ def get_device_list():
             devs += [f"mps:{i}" for i in range(torch.mps.device_count())]
     except Exception:
         pass
-    return devs+["cpu"]
+    return devs
 
 def tensor2video(frames: torch.Tensor):
     video_squeezed = frames.squeeze(0)
@@ -91,7 +85,7 @@ def prepare_input_tensor(image_tensor: torch.Tensor, scale: int = 4, dtype=torch
     vid_final = vid_stacked.permute(1, 0, 2, 3).unsqueeze(0)
     
     del vid_stacked
-    vram_clean()
+    clean_vram()
     
     return vid_final, tH, tW, F
 
@@ -262,13 +256,13 @@ class FlashVSRNode:
                     "step": 32,
                 }),
                 "tile_overlap": ("INT", {
-                    "default": 64,
+                    "default": 24,
                     "min": 8,
                     "max": 512,
                     "step": 8,
                 }),
                 "unload_dit": ("BOOLEAN", {
-                    "default": False,
+                    "default": True,
                     "tooltip": "Unload DiT before decoding to reduce VRAM peak at the cost of speed."
                 }),
                 "sparse_ratio": ("FLOAT", {
@@ -309,15 +303,21 @@ class FlashVSRNode:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "main"
-    CATEGORY = "FlashVSR Ultra-Fast"
+    CATEGORY = "FlashVSR"
     DESCRIPTION = 'Download the entire "FlashVSR" folder with all the files inside it from "https://huggingface.co/JunhaoZhuang/FlashVSR" and put it in the "ComfyUI/models"'
     
     def main(self, frames, mode, scale, color_fix, tiled_vae, tiled_dit, tile_size, tile_overlap, unload_dit, sparse_ratio, kv_ratio, local_range, seed, device):
         if device == "auto":
-            _device = "cuda:0" if torch.cuda.is_available() else "cpu"
+            _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else device
+        
+        if _device == "auto":
+            raise RuntimeError("No devices found to run FlashVSR!")
         
         if tiled_dit and (tile_overlap > tile_size / 2):
-            raise ValueError('"tile_overlap" must not be greater than half of "tile_size"')
+            raise ValueError('The "tile_overlap" must be less than half of "tile_size"!')
+            
+        if frames.shape[0] < 21:
+            raise ValueError(f"Number of frames must be at least 21, got {frames.shape[0]}")
         
         dtype = torch.bfloat16
         pipe = init_pipeline(mode, _device)
@@ -342,7 +342,7 @@ class FlashVSRNode:
                 _tile = input_tile.to(_device)
                 LQ_tile, th, tw, F = prepare_input_tensor(_tile, scale=scale, dtype=torch.bfloat16)
                 del _tile
-                vram_clean()
+                clean_vram()
                 
                 output_tile_gpu = pipe(
                     prompt="", negative_prompt="", cfg_scale=1.0, num_inference_steps=1, seed=seed, tiled=tiled_vae,
@@ -367,7 +367,7 @@ class FlashVSRNode:
                 weight_sum_canvas[:, out_y1:out_y2, out_x1:out_x2, :] += mask_nhwc
                 
                 del LQ_tile, output_tile_gpu, processed_tile_cpu, input_tile
-                vram_clean()
+                clean_vram()
                 
             weight_sum_canvas[weight_sum_canvas == 0] = 1.0
             final_output = final_output_canvas / weight_sum_canvas
@@ -385,7 +385,7 @@ class FlashVSRNode:
             final_output = tensor2video(video)
             
             del pipe, video, LQ
-            vram_clean()
+            clean_vram()
         
         print("[FlashVSR] Inference complete. Cleaning up models and cache...")
         return (final_output,)
@@ -395,5 +395,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "FlashVSRNode": "FlashVSR",
+    "FlashVSRNode": "FlashVSR Ultra-Fast",
 }

@@ -1,16 +1,9 @@
 torch
 torchvision
 einops
-huggingface-hub
 numpy
-imageio
 safetensors
-sentencepiece
-transformers
-ftfy
-modelscope
 tqdm
-typing_extensions
 pillow
 
 # Block-Sparse-Attention for different Python versions

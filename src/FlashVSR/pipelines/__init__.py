@@ -1,0 +1,2 @@
+from .flashvsr_full import FlashVSRFullPipeline
+from .flashvsr_tiny import FlashVSRTinyPipeline
