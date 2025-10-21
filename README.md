@@ -35,6 +35,14 @@ python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 
 - Download the entire `FlashVSR` folder all the files inside it from [here](https://huggingface.co/JunhaoZhuang/FlashVSR) and put it in the `ComfyUI/models`
 
+```
+├── ComfyUI/models/FlashVSR
+|     ├── LQ_proj_in.ckpt
+|     ├── TCDecoder.ckpt
+|     ├── diffusion_pytorch_model_streaming_dmd.safetensors
+|     ├── Wan2.1_VAE.pth
+```
+
 ## Acknowledgments
 - [FlashVSR](https://github.com/OpenImagingLab/FlashVSR) @OpenImagingLab  
 - [Block-Sparse-Attention](https://github.com/mit-han-lab/Block-Sparse-Attention) @mit-han-lab
