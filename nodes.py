@@ -9,7 +9,8 @@ import comfy.utils
 
 import numpy as np
 import torch.nn.functional as F
-
+import requests
+from tqdm import tqdm
 from einops import rearrange
 from .src.FlashVSR import ModelManager, FlashVSRFullPipeline, FlashVSRTinyPipeline
 from .src.FlashVSR.models.utils import clean_vram
@@ -126,25 +127,154 @@ def create_feather_mask(size, overlap):
     
     return mask
 
+def download_file(main_url, backup_url, save_path):
+    """首先尝试从主URL下载，如果超时则使用备用URL"""
+    print(f"Try download file: {os.path.basename(save_path)} 从 {main_url}")
+
+    temp_path = f"{save_path}.partial"
+    if os.path.exists(temp_path):
+        print(f"Delete partial file: {temp_path}")
+        try:
+            os.remove(temp_path)
+        except Exception as e:
+            print(f"Delete partial file failed: {str(e)}")
+    # 设置超时时间（秒）
+    timeout = 15
+
+    try:
+        response = requests.get(main_url, stream=True, timeout=timeout)
+        response.raise_for_status()
+
+        total_size = int(response.headers.get('content-length', 0))
+        chunk_size = 8192  # 8KB chunks
+
+        with open(temp_path, 'wb') as file, tqdm(
+            desc=f"Main URL - {os.path.basename(save_path)}",
+            total=total_size,
+            unit='B',
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as bar:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    size = file.write(chunk)
+                    bar.update(size)
+        if os.path.exists(temp_path):
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            os.rename(temp_path, save_path)
+            print(f"Download from {main_url} success, save to: {save_path}")
+        else:
+            raise RuntimeError("Download from main URL failed, temp file not exist")
+
+        return True
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+        print(f"Download from {main_url} timeout or connection error, try backup URL")
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+    except Exception as e:
+        print(f"Download from {main_url} failed: {str(e)}")
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+        print(f"Download from {main_url} timeout or connection error, try backup URL")
+    except Exception as e:
+        print(f"Download from {main_url} failed: {str(e)}")
+
+    # 如果主URL失败，尝试备用URL
+    print(f"Try download file: {os.path.basename(save_path)} 从 {backup_url}")
+    try:
+        response = requests.get(backup_url, stream=True)
+        response.raise_for_status()
+
+        total_size = int(response.headers.get('content-length', 0))
+        chunk_size = 8192  # 8KB chunks
+
+        with open(temp_path, 'wb') as file, tqdm(
+            desc=f"Backup URL - {os.path.basename(save_path)}",
+            total=total_size,
+            unit='B',
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as bar:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    size = file.write(chunk)
+                    bar.update(size)
+
+        if os.path.exists(temp_path):
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            os.rename(temp_path, save_path)
+            print(f"File saved from backup URL: {save_path}")
+        else:
+            raise RuntimeError("Download from backup URL failed, temp file not exist")
+
+        return True
+    except Exception as e:
+        print(f"Download from backup URL failed: {str(e)}")
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+        raise RuntimeError(f"Download {os.path.basename(save_path)} from backup URL failed: {str(e)}")
+
 def init_pipeline(mode, device):
     model_path = os.path.join(folder_paths.models_dir, "FlashVSR")
+
     if not os.path.exists(model_path):
-        raise RuntimeError(f'Model directory does not exist!\nPlease save all weights to "{model_path}"')
+        print(f"Create model directory: {model_path}")
+        os.makedirs(model_path, exist_ok=True)
+
+    model_files = [
+        {
+            "name": "diffusion_pytorch_model_streaming_dmd.safetensors",
+            "main_url": "https://huggingface.co/JunhaoZhuang/FlashVSR/resolve/main/diffusion_pytorch_model_streaming_dmd.safetensors",
+            "backup_url": "https://modelscope.cn/models/AI-ModelScope/FlashVSR/resolve/master/diffusion_pytorch_model_streaming_dmd.safetensors"
+        },
+        {
+            "name": "Wan2.1_VAE.pth",
+            "main_url": "https://huggingface.co/JunhaoZhuang/FlashVSR/resolve/main/Wan2.1_VAE.pth",
+            "backup_url": "https://modelscope.cn/models/AI-ModelScope/FlashVSR/resolve/master/Wan2.1_VAE.pth"
+        },
+        {
+            "name": "LQ_proj_in.ckpt",
+            "main_url": "https://huggingface.co/JunhaoZhuang/FlashVSR/resolve/main/LQ_proj_in.ckpt",
+            "backup_url": "https://modelscope.cn/models/AI-ModelScope/FlashVSR/resolve/master/LQ_proj_in.ckpt"
+        },
+        {
+            "name": "TCDecoder.ckpt",
+            "main_url": "https://huggingface.co/JunhaoZhuang/FlashVSR/resolve/main/TCDecoder.ckpt",
+            "backup_url": "https://modelscope.cn/models/AI-ModelScope/FlashVSR/resolve/master/TCDecoder.ckpt"
+        }
+    ]
+
+    for file_info in model_files:
+        file_path = os.path.join(model_path, file_info["name"])
+        if not os.path.exists(file_path):
+            try:
+                download_file(file_info["main_url"], file_info["backup_url"], file_path)
+            except Exception as e:
+                raise RuntimeError(f"Download {file_info['name']} Failed: {str(e)}")
+
     ckpt_path = os.path.join(model_path, "diffusion_pytorch_model_streaming_dmd.safetensors")
-    if not os.path.exists(ckpt_path):
-        raise RuntimeError(f'"diffusion_pytorch_model_streaming_dmd.safetensors" does not exist!\nPlease save it to "{model_path}"')
     vae_path = os.path.join(model_path, "Wan2.1_VAE.pth")
-    if not os.path.exists(vae_path):
-        raise RuntimeError(f'"Wan2.1_VAE.pth" does not exist!\nPlease save it to "{model_path}"')
     lq_path = os.path.join(model_path, "LQ_proj_in.ckpt")
-    if not os.path.exists(lq_path):
-        raise RuntimeError(f'"LQ_proj_in.ckpt" does not exist!\nPlease save it to "{model_path}"')
     tcd_path = os.path.join(model_path, "TCDecoder.ckpt")
-    if not os.path.exists(tcd_path):
-        raise RuntimeError(f'"TCDecoder.ckpt" does not exist!\nPlease save it to "{model_path}"')
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
     prompt_path = os.path.join(current_dir, "src", "utils", "posi_prompt.pth")
-    
+
+    if not os.path.exists(prompt_path):
+        raise RuntimeError(f'File not found: {prompt_path}')
+
     mm = ModelManager(torch_dtype=torch.bfloat16, device="cpu")
     if mode == "full":
         mm.load_models([ckpt_path, vae_path])
