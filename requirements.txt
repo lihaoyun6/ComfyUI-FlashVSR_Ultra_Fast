@@ -5,3 +5,6 @@ numpy
 safetensors
 tqdm
 pillow
+huggingface_hub
+triton; platform_system!="Windows"
+triton-windows; platform_system=="Windows"

@@ -11,6 +11,7 @@ import numpy as np
 import torch.nn.functional as F
 
 from einops import rearrange
+from huggingface_hub import snapshot_download
 from .src.FlashVSR import ModelManager, FlashVSRFullPipeline, FlashVSRTinyPipeline
 from .src.FlashVSR.models.utils import clean_vram
 from .src.utils.utils import Buffer_LQ4x_Proj
@@ -29,6 +30,23 @@ def get_device_list():
     except Exception:
         pass
     return devs
+
+def log(message:str, message_type:str='info'):
+    if message_type == 'error':
+        message = '\033[1;41m' + message + '\033[m'
+    elif message_type == 'warning':
+        message = '\033[1;31m' + message + '\033[m'
+    elif message_type == 'finish':
+        message = '\033[1;32m' + message + '\033[m'
+    else:
+        message = '\033[1;33m' + message + '\033[m'
+    print(f"{message}")
+
+def model_downlod(model_name="JunhaoZhuang/FlashVSR"):
+    model_dir = os.path.join(folder_paths.models_dir, "FlashVSR")
+    if not os.path.exists(model_dir):
+        log(f"Downloading model '{model_name}' from huggingface...", message_type='info')
+        snapshot_download(repo_id=model_name, local_dir=model_dir, local_dir_use_symlinks=False, resume_download=True)
 
 def tensor2video(frames: torch.Tensor):
     video_squeezed = frames.squeeze(0)
@@ -127,6 +145,7 @@ def create_feather_mask(size, overlap):
     return mask
 
 def init_pipeline(mode, device):
+    model_downlod()
     model_path = os.path.join(folder_paths.models_dir, "FlashVSR")
     if not os.path.exists(model_path):
         raise RuntimeError(f'Model directory does not exist!\nPlease save all weights to "{model_path}"')
@@ -233,7 +252,7 @@ class FlashVSRNode:
                     "default": "tiny",
                 }),
                 "scale": ("INT", {
-                    "default": 4,
+                    "default": 2,
                     "min": 2,
                     "max": 4,
                 }),
@@ -338,7 +357,7 @@ class FlashVSRNode:
             latent_tiles_cpu = []
             
             for i, (x1, y1, x2, y2) in enumerate(cqdm(tile_coords, desc="Processing Tiles")):
-                print(f"[FlashVSR] Processing tile {i+1}/{len(tile_coords)}: coords ({x1},{y1}) to ({x2},{y2})")
+                log(f"[FlashVSR] Processing tile {i+1}/{len(tile_coords)}: coords ({x1},{y1}) to ({x2},{y2})", message_type='info')
                 input_tile = frames[:, y1:y2, x1:x2, :]
                 
                 _tile = input_tile.to(_device)
@@ -389,7 +408,7 @@ class FlashVSRNode:
             del pipe, video, LQ
             clean_vram()
         
-        print("[FlashVSR] Inference complete. Cleaning up models and cache...")
+        log("[FlashVSR] Inference complete. Cleaning up models and cache...", message_type='info')
         return (final_output,)
 
 NODE_CLASS_MAPPINGS = {
