@@ -176,7 +176,7 @@ def init_pipeline(mode, device):
         mm.load_models([ckpt_path])
         pipe = FlashVSRTinyPipeline.from_model_manager(mm, device=device)
         multi_scale_channels = [512, 256, 128, 128]
-        pipe.TCDecoder = build_tcdecoder(new_channels=multi_scale_channels, new_latent_channels=16+768)
+        pipe.TCDecoder = build_tcdecoder(new_channels=multi_scale_channels, device=device, new_latent_channels=16+768)
         mis = pipe.TCDecoder.load_state_dict(torch.load(tcd_path), strict=False)
         
     pipe.denoising_model().LQ_proj_in = Buffer_LQ4x_Proj(in_dim=3, out_dim=1536, layer_num=1).to(device, dtype=torch.bfloat16)
@@ -331,6 +331,9 @@ class FlashVSRNode:
             _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else device
         if _device == "auto" or _device not in device_choices:
             raise RuntimeError("No devices found to run FlashVSR!")
+        
+        if _device.startswith("cuda"):
+            torch.cuda.set_device(_device)
         
         if tiled_dit and (tile_overlap > tile_size / 2):
             raise ValueError('The "tile_overlap" must be less than half of "tile_size"!')
