@@ -1,7 +1,7 @@
-torch
-torchvision
+torch==2.7.1+cu128
+torchvision==0.22.1+cu128
+numpy<2
 einops
-numpy
 safetensors
 tqdm
 pillow

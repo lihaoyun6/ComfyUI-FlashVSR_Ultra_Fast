@@ -31,6 +31,8 @@ def get_device_list():
         pass
     return devs
 
+device_choices = get_device_list()
+
 def log(message:str, message_type:str='info'):
     if message_type == 'error':
         message = '\033[1;41m' + message + '\033[m'
@@ -241,8 +243,6 @@ class cqdm:
 class FlashVSRNode:
     @classmethod
     def INPUT_TYPES(cls):
-        device_choices = get_device_list()
-            
         return {
             "required": {
                 "frames": ("IMAGE", {
@@ -258,7 +258,7 @@ class FlashVSRNode:
                 }),
                 "color_fix": ("BOOLEAN", {
                     "default": True,
-                    "tooltip": "Disable tiling: faster decode but higher VRAM usage.\nSet to True for lower memory consumption at the cost of speed."
+                    "tooltip": "Use wavelet transform to correct output video color."
                 }),
                 "tiled_vae": ("BOOLEAN", {
                     "default": True,
@@ -326,12 +326,10 @@ class FlashVSRNode:
     DESCRIPTION = 'Download the entire "FlashVSR" folder with all the files inside it from "https://huggingface.co/JunhaoZhuang/FlashVSR" and put it in the "ComfyUI/models"'
     
     def main(self, frames, mode, scale, color_fix, tiled_vae, tiled_dit, tile_size, tile_overlap, unload_dit, sparse_ratio, kv_ratio, local_range, seed, device):
+        _device = device
         if device == "auto":
             _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else device
-        else:
-            _device = device
-        
-        if _device == "auto":
+        if _device == "auto" or _device not in device_choices:
             raise RuntimeError("No devices found to run FlashVSR!")
         
         if tiled_dit and (tile_overlap > tile_size / 2):
@@ -393,6 +391,8 @@ class FlashVSRNode:
             weight_sum_canvas[weight_sum_canvas == 0] = 1.0
             final_output = final_output_canvas / weight_sum_canvas
         else:
+            log(f"[FlashVSR] Processing {len(frames)} frames...", message_type='info')
+            
             _frames = frames.to(_device)
             LQ, th, tw, F = prepare_input_tensor(_frames, scale=scale, dtype=dtype)
             
@@ -408,7 +408,7 @@ class FlashVSRNode:
             del pipe, video, LQ
             clean_vram()
         
-        log("[FlashVSR] Inference complete. Cleaning up models and cache...", message_type='info')
+        log("[FlashVSR] Done.", message_type='info')
         return (final_output,)
 
 NODE_CLASS_MAPPINGS = {
