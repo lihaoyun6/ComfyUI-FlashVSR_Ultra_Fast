@@ -2,6 +2,14 @@
 Running FlashVSR on lower VRAM without any artifacts.   
 **[[📃中文版本](./README_zh.md)]**
 
+## Changelog
+#### 2025-10-21
+- Initial this project, introducing features such as `tile_dit` to significantly reducing VRAM usage.  
+
+#### 2025-10-22
+- Replaced `Block-Sparse-Attention` with `Sparse_Sage`, removing the need to compile any custom kernels.  
+- Added support for running on RTX 50 series GPUs.
+
 ## Preview
 ![](./img/preview.jpg)
 
@@ -23,14 +31,9 @@ Unload DiT before decoding to reduce VRAM peak at the cost of speed.
 
 ## Installation
 
-#### nodes:
-⚠️ The precompiled `Block-Sparse-Attention` whl is for torch2.7+cu128 and doesn't support torch2.8!  
-⚠️ If you are using PyTorch 2.8 or later, please install `Block-Sparse-Attention` from the source code.  
-⚠️ Refer to the "Compiling Block-Sparse-Attention" section in the appendix below.  
+#### nodes: 
 
 ```bash
-#If you are using torch2.7+cu128, run the following command to install the nodes:
-
 cd ComfyUI/custom_nodes
 git clone https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast.git
 python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
@@ -50,20 +53,5 @@ python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 
 ## Acknowledgments
 - [FlashVSR](https://github.com/OpenImagingLab/FlashVSR) @OpenImagingLab  
-- [Block-Sparse-Attention](https://github.com/mit-han-lab/Block-Sparse-Attention) @mit-han-lab
+- [Sparse_SageAttention](https://github.com/jt-zhang/Sparse_SageAttention_API) @jt-zhang
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) @comfyanonymous
-
-## Appendix
-### Compiling Block-Sparse-Attention:
-
-1. First, make sure you have the `MSVC` build environment and `CUDAToolkit` installed.  
-2. Run the following commands to compile and install:
-
-```bash
-git clone https://github.com/lihaoyun6/Block-Sparse-Attention
-cd Block-Sparse-Attention
-pip install packaging
-pip install ninja
-set MAX_JOBS=4   # For Linux users, run: export MAX_JOBS=4
-python setup.py install
-```

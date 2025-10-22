@@ -2,6 +2,14 @@
 在低显存环境下运行 FlashVSR，同时保持无伪影高质量输出。  
 **[[📃English](./readme.md)]**
 
+## 更新日志
+#### 2025-10-21
+- 项目首次发布, 引入了`tile_dit`等功能, 大幅度降低显存需求  
+
+#### 2025-10-22
+- 使用`Sparse_SageAttention`替换了`Block-Sparse-Attention`, 无需编译安装任何自定义内核, 开箱即用.  
+- 支持在 RTX50 系列显卡上运行.  
+
 ## 预览
 ![](./img/preview.jpg)
 
@@ -24,12 +32,7 @@
 ## 安装步骤
 
 #### 安装节点:
-⚠️ 预编译的`Block-Sparse-Attention`安装包仅支持 torch2.7+cu128 环境, 不支持 torch2.8!  
-⚠️ 如果你正在使用 torch2.8 或更高版本, 请在下载本插件前自行编译安装`Block-Sparse-Attention`  
-⚠️ 参考下方附录中的"编译 Block-Sparse-Attention"小节
-
 ```bash
-#如果确定安装的是torch2.7+cu128, 请执行下列命令安装
 cd ComfyUI/custom_nodes
 git clone https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast.git
 python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
@@ -47,20 +50,5 @@ python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 
 ## 致谢
 - [FlashVSR](https://github.com/OpenImagingLab/FlashVSR) @OpenImagingLab  
-- [Block-Sparse-Attention](https://github.com/mit-han-lab/Block-Sparse-Attention) @mit-han-lab
+- [Sparse_SageAttention](https://github.com/jt-zhang/Sparse_SageAttention_API) @jt-zhang
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) @comfyanonymous
-
-## 附录
-### 编译 Block-Sparse-Attention:
-
-1. 首先确保你安装了 MSVC 编译环境和 CUDAToolkit  
-2. 运行下列命令来进行编译安装:  
-
-```bash
-git clone https://github.com/lihaoyun6/Block-Sparse-Attention
-cd Block-Sparse-Attention
-pip install packaging
-pip install ninja
-set MAX_JOBS=4 #Linux用户请执行: export MAX_JOBS=4
-python setup.py install
-```
