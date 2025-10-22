@@ -309,6 +309,8 @@ class FlashVSRNode:
     def main(self, frames, mode, scale, color_fix, tiled_vae, tiled_dit, tile_size, tile_overlap, unload_dit, sparse_ratio, kv_ratio, local_range, seed, device):
         if device == "auto":
             _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else device
+        else:
+            _device = device
         
         if _device == "auto":
             raise RuntimeError("No devices found to run FlashVSR!")
