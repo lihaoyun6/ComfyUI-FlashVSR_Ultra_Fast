@@ -391,7 +391,7 @@ class FlashVSRNode:
             weight_sum_canvas[weight_sum_canvas == 0] = 1.0
             final_output = final_output_canvas / weight_sum_canvas
         else:
-            log(f"[FlashVSR] Processing {len(frames)} frames...", message_type='info')
+            log(f"[FlashVSR] Processing {frames.shape[0]} frames...", message_type='info')
             
             _frames = frames.to(_device)
             LQ, th, tw, F = prepare_input_tensor(_frames, scale=scale, dtype=dtype)
