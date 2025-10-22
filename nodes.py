@@ -146,7 +146,7 @@ def create_feather_mask(size, overlap):
     
     return mask
 
-def init_pipeline(mode, device):
+def init_pipeline(mode, device, dtype):
     model_downlod()
     model_path = os.path.join(folder_paths.models_dir, "FlashVSR")
     if not os.path.exists(model_path):
@@ -176,7 +176,7 @@ def init_pipeline(mode, device):
         mm.load_models([ckpt_path])
         pipe = FlashVSRTinyPipeline.from_model_manager(mm, device=device)
         multi_scale_channels = [512, 256, 128, 128]
-        pipe.TCDecoder = build_tcdecoder(new_channels=multi_scale_channels, device=device, new_latent_channels=16+768)
+        pipe.TCDecoder = build_tcdecoder(new_channels=multi_scale_channels, device=device, dtype=dtype, new_latent_channels=16+768)
         mis = pipe.TCDecoder.load_state_dict(torch.load(tcd_path, map_location=device), strict=False)
         pipe.TCDecoder.clean_mem()
         
@@ -343,7 +343,7 @@ class FlashVSRNode:
             raise ValueError(f"Number of frames must be at least 21, got {frames.shape[0]}")
         
         dtype = torch.bfloat16
-        pipe = init_pipeline(mode, _device)
+        pipe = init_pipeline(mode, _device, dtype)
         
         if tiled_dit:
             N, H, W, C = frames.shape
