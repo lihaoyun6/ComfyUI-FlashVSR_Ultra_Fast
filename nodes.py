@@ -165,7 +165,7 @@ def init_pipeline(mode, device, dtype):
     if not os.path.exists(tcd_path):
         raise RuntimeError(f'"TCDecoder.ckpt" does not exist!\nPlease save it to "{model_path}"')
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    prompt_path = os.path.join(current_dir, "src", "utils", "posi_prompt.pth")
+    prompt_path = os.path.join(current_dir, "posi_prompt.pth")
     
     mm = ModelManager(torch_dtype=dtype, device="cpu")
     if mode in ["full", "full-long"]:
