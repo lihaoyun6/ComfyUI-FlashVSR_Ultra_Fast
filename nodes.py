@@ -82,7 +82,7 @@ def tensor_upscale_then_center_crop(frame_tensor: torch.Tensor, scale: int, tW: 
 
     return cropped_tensor.squeeze(0)
 
-def prepare_input_tensor(image_tensor: torch.Tensor, scale: int = 4, dtype=torch.bfloat16):
+def prepare_input_tensor(image_tensor: torch.Tensor, device, scale: int = 4, dtype=torch.bfloat16):
     N0, h0, w0, _ = image_tensor.shape
     
     multiple = 128
@@ -96,7 +96,7 @@ def prepare_input_tensor(image_tensor: torch.Tensor, scale: int = 4, dtype=torch
     frames = []
     for i in range(F):
         frame_idx = min(i, N0 - 1)
-        frame_slice = image_tensor[frame_idx]
+        frame_slice = image_tensor[frame_idx].to(device)
         tensor_chw = tensor_upscale_then_center_crop(frame_slice, scale=scale, tW=tW, tH=tH)
         tensor_out = tensor_chw * 2.0 - 1.0
         tensor_out = tensor_out.to('cpu').to(dtype)
@@ -383,13 +383,9 @@ class FlashVSRNode:
                 log(f"[FlashVSR] Processing tile {i+1}/{len(tile_coords)}: coords ({x1},{y1}) to ({x2},{y2})", message_type='info')
                 input_tile = frames[:, y1:y2, x1:x2, :]
                 
-                _tile = input_tile.to(_device)
-                LQ_tile, th, tw, F = prepare_input_tensor(_tile, scale=scale, dtype=_dtype)
+                LQ_tile, th, tw, F = prepare_input_tensor(input_tile, _device, scale=scale, dtype=_dtype)
                 if "long" not in mode:
                     LQ_tile = LQ_tile.to(_device)
-                    
-                del _tile
-                clean_vram()
                 
                 output_tile_gpu = pipe(
                     prompt="", negative_prompt="", cfg_scale=1.0, num_inference_steps=1, seed=seed, tiled=tiled_vae,
@@ -419,17 +415,14 @@ class FlashVSRNode:
             weight_sum_canvas[weight_sum_canvas == 0] = 1.0
             final_output = final_output_canvas / weight_sum_canvas
         else:
-            log(f"[FlashVSR] Processing {frames.shape[0]} frames...", message_type='info')
-            
-            _frames = frames.to(_device)
-            LQ, th, tw, F = prepare_input_tensor(_frames, scale=scale, dtype=_dtype)
+            log("[FlashVSR] Preparing frames...")
+            LQ, th, tw, F = prepare_input_tensor(frames, _device, scale=scale, dtype=_dtype)
             if "long" not in mode:
                 LQ = LQ.to(_device)
-                
-            del _frames
-            clean_vram()
             
             pipe = init_pipeline(mode, _device, _dtype)
+            log(f"[FlashVSR] Processing {frames.shape[0]} frames...", message_type='info')
+            
             video = pipe(
                 prompt="", negative_prompt="", cfg_scale=1.0, num_inference_steps=1, seed=seed, tiled=tiled_vae,
                 progress_bar_cmd=cqdm, LQ_video=LQ, num_frames=F, height=th, width=tw, is_full_block=False, if_buffer=True,
