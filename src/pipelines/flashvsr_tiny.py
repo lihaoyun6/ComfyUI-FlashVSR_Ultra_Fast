@@ -3,7 +3,6 @@ import os
 import time
 from typing import Optional, Tuple, Literal
 
-import gc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

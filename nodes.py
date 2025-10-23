@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 from einops import rearrange
 from huggingface_hub import snapshot_download
-from .src import ModelManager, FlashVSRFullPipeline, FlashVSRTinyPipeline, FlashVSRFullLongPipeline, FlashVSRTinyLongPipeline
+from .src import ModelManager, FlashVSRFullPipeline, FlashVSRTinyPipeline, FlashVSRTinyLongPipeline
 from .src.models.TCDecoder import build_tcdecoder
 from .src.models.utils import clean_vram, Buffer_LQ4x_Proj
 
@@ -168,12 +168,9 @@ def init_pipeline(mode, device, dtype):
     prompt_path = os.path.join(current_dir, "posi_prompt.pth")
     
     mm = ModelManager(torch_dtype=dtype, device="cpu")
-    if mode in ["full", "full-long"]:
+    if mode == "full":
         mm.load_models([ckpt_path, vae_path])
-        if mode == "full":
-            pipe = FlashVSRFullPipeline.from_model_manager(mm, device=device)
-        else:
-            pipe = FlashVSRFullLongPipeline.from_model_manager(mm, device=device)
+        pipe = FlashVSRFullPipeline.from_model_manager(mm, device=device)
         pipe.vae.model.encoder = None
         pipe.vae.model.conv1 = None
     else:

@@ -3,7 +3,6 @@ import os
 import time
 from typing import Optional, Tuple, Literal
 
-import gc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -308,7 +307,7 @@ class FlashVSRTinyLongPipeline(BasePipeline):
         tile_size=(60, 104),
         tile_stride=(30, 52),
         tea_cache_l1_thresh=None,
-        tea_cache_model_id="Wan2.1-T2V-14B",
+        tea_cache_model_id="Wan2.1-T2V-1.3B",
         progress_bar_cmd=tqdm,
         progress_bar_st=None,
         LQ_video=None,
