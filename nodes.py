@@ -244,6 +244,7 @@ class FlashVSRNode:
                 }),
                 "mode": (["tiny", "tiny-long", "full", "full-long"], {
                     "default": "tiny",
+                    "tooltip": 'Using "*-long" mode can significantly reduce VRAM used with long video input.'
                 }),
                 "scale": ("INT", {
                     "default": 2,
@@ -312,6 +313,7 @@ class FlashVSRNode:
                 }),
                 "dtype": (["fp16", "bf16"], {
                     "default": "bf16",
+                    "tooltip": "Data and inference precision."
                 }),
             }
         }
