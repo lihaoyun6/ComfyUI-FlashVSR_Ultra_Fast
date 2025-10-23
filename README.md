@@ -3,6 +3,9 @@ Running FlashVSR on lower VRAM without any artifacts.
 **[[📃中文版本](./README_zh.md)]**
 
 ## Changelog
+#### 2025-10-24
+- Added long video pipeline that significantly reduces VRAM usage when upscaling long videos.
+
 #### 2025-10-21
 - Initial this project, introducing features such as `tile_dit` to significantly reducing VRAM usage.  
 
