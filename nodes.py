@@ -253,7 +253,7 @@ class FlashVSRNode:
                 "frames": ("IMAGE", {
                     "tooltip": "Sequential video frames as IMAGE tensor batch"
                 }),
-                "mode": (["tiny", "tiny-long", "full", "full-long"], {
+                "mode": (["tiny", "tiny-long", "full"], {
                     "default": "tiny",
                     "tooltip": 'Using "tiny-long" mode can significantly reduce VRAM used with long video input.'
                 }),
