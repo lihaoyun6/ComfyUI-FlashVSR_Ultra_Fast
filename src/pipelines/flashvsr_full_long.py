@@ -441,11 +441,11 @@ class FlashVSRFullLongPipeline(BasePipeline):
                 # 颜色校正（wavelet）
                 try:
                     if color_fix:
-                        frames = self.ColorCorrector(
-                            frames.to(device=LQ_video.device),
-                            LQ_video[:, :, :frames.shape[2], :, :],
+                        cur_frames = self.ColorCorrector(
+                            cur_frames.to(device=self.device),
+                            cur_LQ_frame,
                             clip_range=(-1, 1),
-                            chunk_size=16,
+                            chunk_size=None,
                             method='adain'
                         )
                 except:
@@ -458,7 +458,6 @@ class FlashVSRFullLongPipeline(BasePipeline):
                 clean_vram()
                 
             frames = torch.cat(frames_total, dim=2)
-
         return frames[0]
 
 
