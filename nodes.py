@@ -14,7 +14,21 @@ from einops import rearrange
 from huggingface_hub import snapshot_download
 from .src import ModelManager, FlashVSRFullPipeline, FlashVSRTinyPipeline, FlashVSRFullLongPipeline, FlashVSRTinyLongPipeline
 from .src.models.TCDecoder import build_tcdecoder
-from .src.models.utils import get_device_list, clean_vram, Buffer_LQ4x_Proj
+from .src.models.utils import clean_vram, Buffer_LQ4x_Proj
+
+def get_device_list():
+    devs = ["auto"]
+    try:
+        if hasattr(torch, "cuda") and hasattr(torch.cuda, "is_available") and torch.cuda.is_available():
+            devs += [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+    except Exception:
+        pass
+    try:
+        if hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available():
+            devs += [f"mps:{i}" for i in range(torch.mps.device_count())]
+    except Exception:
+        pass
+    return devs
 
 device_choices = get_device_list()
 
