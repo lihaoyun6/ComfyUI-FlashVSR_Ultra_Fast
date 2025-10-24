@@ -1,0 +1,37 @@
+[project]
+name = "flashvsr_ultra_fast"
+description = "Running FlashVSR on lower VRAM without any artifacts."
+version = "1.0.0"
+license = {file = "LICENSE"} 
+# classifiers = [
+#     # For OS-independent nodes (works on all operating systems)
+#     "Operating System :: OS Independent",
+#
+#     # OR for OS-specific nodes, specify the supported systems:
+#     "Operating System :: Microsoft :: Windows",  # Windows specific
+#     "Operating System :: POSIX :: Linux",  # Linux specific
+#     "Operating System :: MacOS",  # macOS specific
+#
+#     # GPU Accelerator support. Pick the ones that are supported by your extension.
+#     "Environment :: GPU :: NVIDIA CUDA",    # NVIDIA CUDA support
+#     "Environment :: GPU :: AMD ROCm",       # AMD ROCm support
+#     "Environment :: GPU :: Intel Arc",      # Intel Arc support
+#     "Environment :: NPU :: Huawei Ascend",  # Huawei Ascend support
+#     "Environment :: GPU :: Apple Metal",    # Apple Metal support
+# ]
+
+dependencies = ["--extra-index-url https://download.pytorch.org/whl/cu128", "torch==2.7.1+cu128", "torchvision==0.22.1+cu128", "numpy<2", "einops", "safetensors", "tqdm", "pillow", "huggingface_hub", "triton; platform_system!=\"Windows\"", "triton-windows; platform_system==\"Windows\""]
+
+[project.urls]
+Repository = "https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast"
+#  Used by Comfy Registry https://registry.comfy.org
+Documentation = "https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast/wiki"
+"Bug Tracker" = "https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast/issues"
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "ComfyUI-FlashVSR_Ultra_Fast"
+Icon = ""
+includes = [] 
+# "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
+
