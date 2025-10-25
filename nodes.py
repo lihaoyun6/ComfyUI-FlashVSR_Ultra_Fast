@@ -15,6 +15,7 @@ from huggingface_hub import snapshot_download
 from .src import ModelManager, FlashVSRFullPipeline, FlashVSRTinyPipeline, FlashVSRTinyLongPipeline
 from .src.models.TCDecoder import build_tcdecoder
 from .src.models.utils import clean_vram, Buffer_LQ4x_Proj
+from .src.models import wan_video_dit
 
 def get_device_list():
     devs = ["auto"]
@@ -322,9 +323,13 @@ class FlashVSRNode:
                     "default": device_choices[0],
                     "tooltip": "Device to load the weights, default: auto (CUDA if available, else CPU)"
                 }),
-                "dtype": (["fp16", "bf16"], {
+                "precision": (["fp16", "bf16"], {
                     "default": "bf16",
                     "tooltip": "Data and inference precision."
+                }),
+                "attention_mode": (["sparse_sage_attention", "block_sparse_attention"], {
+                    "default": "sparse_sage_attention",
+                    "tooltip": '"sparse_sage_attention" is available for sm_75 to sm_120\n"block_sparse_attention" is available for sm_80 to sm_100'
                 }),
             }
         }
@@ -335,7 +340,7 @@ class FlashVSRNode:
     CATEGORY = "FlashVSR"
     DESCRIPTION = 'Download the entire "FlashVSR" folder with all the files inside it from "https://huggingface.co/JunhaoZhuang/FlashVSR" and put it in the "ComfyUI/models"'
     
-    def main(self, frames, mode, scale, color_fix, tiled_vae, tiled_dit, tile_size, tile_overlap, unload_dit, sparse_ratio, kv_ratio, local_range, seed, device, dtype):
+    def main(self, frames, mode, scale, color_fix, tiled_vae, tiled_dit, tile_size, tile_overlap, unload_dit, sparse_ratio, kv_ratio, local_range, seed, device, precision, attention_mode):
         _device = device
         if device == "auto":
             _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else device
@@ -347,9 +352,19 @@ class FlashVSRNode:
         
         if tiled_dit and (tile_overlap > tile_size / 2):
             raise ValueError('The "tile_overlap" must be less than half of "tile_size"!')
-            
+        
+        if attention_mode == "sparse_sage_attention":
+            wan_video_dit.USE_BLOCK_ATTN = False
+        else:
+            wan_video_dit.USE_BLOCK_ATTN = True
+        
+        _frames = frames
         if frames.shape[0] < 21:
-            raise ValueError(f"Number of frames must be at least 21, got {frames.shape[0]}")
+            add = 21 - frames.shape[0]
+            last_frame = frames[-1:, :, :, :]
+            padding_frames = last_frame.repeat(add, 1, 1, 1)
+            _frames = torch.cat([frames, padding_frames], dim=0)
+            #raise ValueError(f"Number of frames must be at least 21, got {frames.shape[0]}")
         
         dtype_map = {
             "fp32": torch.float32,
@@ -357,12 +372,12 @@ class FlashVSRNode:
             "bf16": torch.bfloat16,
         }
         try:
-            _dtype = dtype_map[args.dtype]
+            dtype = dtype_map[precision]
         except:
-            _dtype = torch.bfloat16
+            dtype = torch.bfloat16
 
         if tiled_dit:
-            N, H, W, C = frames.shape
+            N, H, W, C = _frames.shape
             num_aligned_frames = largest_8n1_leq(N + 4) - 4
             
             final_output_canvas = torch.zeros(
@@ -374,13 +389,13 @@ class FlashVSRNode:
             tile_coords = calculate_tile_coords(H, W, tile_size, tile_overlap)
             latent_tiles_cpu = []
             
-            pipe = init_pipeline(mode, _device, _dtype)
+            pipe = init_pipeline(mode, _device, dtype)
             
             for i, (x1, y1, x2, y2) in enumerate(cqdm(tile_coords, desc="Processing Tiles")):
                 log(f"[FlashVSR] Processing tile {i+1}/{len(tile_coords)}: coords ({x1},{y1}) to ({x2},{y2})", message_type='info')
-                input_tile = frames[:, y1:y2, x1:x2, :]
+                input_tile = _frames[:, y1:y2, x1:x2, :]
                 
-                LQ_tile, th, tw, F = prepare_input_tensor(input_tile, _device, scale=scale, dtype=_dtype)
+                LQ_tile, th, tw, F = prepare_input_tensor(input_tile, _device, scale=scale, dtype=dtype)
                 if "long" not in mode:
                     LQ_tile = LQ_tile.to(_device)
                 
@@ -413,11 +428,11 @@ class FlashVSRNode:
             final_output = final_output_canvas / weight_sum_canvas
         else:
             log("[FlashVSR] Preparing frames...")
-            LQ, th, tw, F = prepare_input_tensor(frames, _device, scale=scale, dtype=_dtype)
+            LQ, th, tw, F = prepare_input_tensor(_frames, _device, scale=scale, dtype=dtype)
             if "long" not in mode:
                 LQ = LQ.to(_device)
             
-            pipe = init_pipeline(mode, _device, _dtype)
+            pipe = init_pipeline(mode, _device, dtype)
             log(f"[FlashVSR] Processing {frames.shape[0]} frames...", message_type='info')
             
             video = pipe(
@@ -433,7 +448,14 @@ class FlashVSRNode:
             clean_vram()
         
         log("[FlashVSR] Done.", message_type='info')
-        return (final_output,)
+        if frames.shape[0] == 1:
+            final_output = final_output.to(_device)
+            stacked_image_tensor = torch.median(final_output, dim=0).unsqueeze(0).to('cpu')
+            del final_output
+            clean_vram()
+            return (stacked_image_tensor,)
+        
+        return (final_output[:frames.shape[0], :, :, :],)
 
 NODE_CLASS_MAPPINGS = {
     "FlashVSRNode": FlashVSRNode,
