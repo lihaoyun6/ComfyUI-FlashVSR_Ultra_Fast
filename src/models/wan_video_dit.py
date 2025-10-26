@@ -30,7 +30,7 @@ except ModuleNotFoundError:
 try:
     from block_sparse_attn import block_sparse_attn_func
     BLOCK_ATTN_AVAILABLE = True
-except ModuleNotFoundError:
+except:
     BLOCK_ATTN_AVAILABLE = False
 
 from .sparse_sage.core import sparse_sageattn
