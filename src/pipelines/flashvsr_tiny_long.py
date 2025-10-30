@@ -166,12 +166,12 @@ class FlashVSRTinyLongPipeline(BasePipeline):
         self.ColorCorrector = TorchColorCorrectorWavelet(levels=5)
 
         print(r"""
-    ███████╗██╗      █████╗ ███████╗██╗  ██╗██╗   ██╗███████╗█████╗
-    ██╔════╝██║     ██╔══██╗██╔════╝██║  ██║██║   ██║██╔════╝██╔══██╗
-    █████╗  ██║     ███████║███████╗███████║╚██╗ ██╔╝███████╗███████║
-    ██╔══╝  ██║     ██╔══██║╚════██║██╔══██║ ╚████╔╝ ╚════██║██╔═██║
-    ██║     ███████╗██║  ██║███████║██║  ██║  ╚██╔╝  ███████║██║  ██║
-    ╚═╝     ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝
+ ███████╗██╗      █████╗ ███████╗██╗  ██╗██╗   ██╗███████╗█████╗
+ ██╔════╝██║     ██╔══██╗██╔════╝██║  ██║██║   ██║██╔════╝██╔══██╗   ██╗
+ █████╗  ██║     ███████║███████╗███████║╚██╗ ██╔╝███████╗███████║ ██████╗
+ ██╔══╝  ██║     ██╔══██║╚════██║██╔══██║ ╚████╔╝ ╚════██║██╔═██║    ██╔═╝ 
+ ██║     ███████╗██║  ██║███████║██║  ██║  ╚██╔╝  ███████║██║  ██║   ╚═╝
+ ╚═╝     ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝
 """)
 
     def enable_vram_management(self, num_persistent_param_in_dit=None):
@@ -253,6 +253,7 @@ class FlashVSRTinyLongPipeline(BasePipeline):
         if self.prompt_emb_posi is None:
             self.prompt_emb_posi = {}
         self.prompt_emb_posi['context'] = ctx
+        self.prompt_emb_posi['stats'] = "load"
 
         if hasattr(self.dit, "reinit_cross_kv"):
             self.dit.reinit_cross_kv(ctx)
@@ -288,6 +289,15 @@ class FlashVSRTinyLongPipeline(BasePipeline):
         ).transpose(1, 2).mul_(2).sub_(1) # 转回 (B, C, F, H, W) 格式，范围 -1 to 1
         
         return frames
+    
+    def offload_model(self, keep_vae=False):
+        self.dit.clear_cross_kv()
+        self.prompt_emb_posi['stats'] = "offload"
+        self.load_models_to_device([])
+        if hasattr(self.dit, "LQ_proj_in"):
+            self.dit.LQ_proj_in.to('cpu')
+        if not keep_vae:
+            self.TCDecoder.to('cpu')
 
     @torch.no_grad()
     def __call__(
@@ -318,7 +328,7 @@ class FlashVSRTinyLongPipeline(BasePipeline):
         local_range = 9,
         color_fix = True,
         unload_dit = False,
-        skip_vae = False,
+        force_offload = False,
     ):
         # 只接受 cfg=1.0（与原代码一致）
         assert cfg_scale == 1.0, "cfg_scale must be 1.0"
@@ -351,6 +361,12 @@ class FlashVSRTinyLongPipeline(BasePipeline):
 
         process_total_num = (num_frames - 1) // 8 - 2
         is_stream = True
+        
+        if self.prompt_emb_posi['stats'] == "offload":
+            self.init_cross_kv(context_tensor=self.prompt_emb_posi['context'])
+        self.load_models_to_device(["dit"])
+        self.dit.LQ_proj_in.to(self.device)
+        self.TCDecoder.to(self.device)
 
         # 清理可能存在的 LQ_proj_in cache
         if hasattr(self.dit, "LQ_proj_in"):
@@ -446,10 +462,19 @@ class FlashVSRTinyLongPipeline(BasePipeline):
                 frames_total.append(cur_frames.to('cpu'))
                 LQ_pre_idx = LQ_cur_idx
                 
-                del cur_frames, cur_latents, cur_LQ_frame
-                clean_vram()
+                if unload_dit:
+                    del noise_pred_posi, cur_frames, cur_latents, cur_LQ_frame
+                    clean_vram()
+                    
+            if hasattr(self.dit, "LQ_proj_in"):
+                self.dit.LQ_proj_in.clear_cache()
+                
+            self.TCDecoder.clean_mem()
+            if force_offload:
+                self.offload_model()
             
             frames = torch.cat(frames_total, dim=2)
+            
         return frames[0]
 
 

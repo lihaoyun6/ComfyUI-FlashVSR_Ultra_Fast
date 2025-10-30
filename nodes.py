@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
+import os,gc
 import math
 import torch
 import folder_paths
@@ -98,10 +98,9 @@ def prepare_input_tensor(image_tensor: torch.Tensor, device, scale: int = 4, dty
     for i in range(F):
         frame_idx = min(i, N0 - 1)
         frame_slice = image_tensor[frame_idx].to(device)
-        tensor_chw = tensor_upscale_then_center_crop(frame_slice, scale=scale, tW=tW, tH=tH)
-        tensor_out = tensor_chw * 2.0 - 1.0
-        tensor_out = tensor_out.to('cpu').to(dtype)
-        frames.append(tensor_out)
+        tensor_chw = tensor_upscale_then_center_crop(frame_slice, scale=scale, tW=tW, tH=tH).to('cpu').to(dtype) * 2.0 - 1.0
+        frames.append(tensor_chw)
+        del frame_slice
 
     vid_stacked = torch.stack(frames, 0)
     vid_final = vid_stacked.permute(1, 0, 2, 3).unsqueeze(0)
@@ -148,7 +147,7 @@ def create_feather_mask(size, overlap):
     
     return mask
 
-def init_pipeline(mode, device, dtype):
+def init_pipeline(mode, device, dtype, alt_vae="none"):
     model_downlod()
     model_path = os.path.join(folder_paths.models_dir, "FlashVSR")
     if not os.path.exists(model_path):
@@ -156,9 +155,14 @@ def init_pipeline(mode, device, dtype):
     ckpt_path = os.path.join(model_path, "diffusion_pytorch_model_streaming_dmd.safetensors")
     if not os.path.exists(ckpt_path):
         raise RuntimeError(f'"diffusion_pytorch_model_streaming_dmd.safetensors" does not exist!\nPlease save it to "{model_path}"')
-    vae_path = os.path.join(model_path, "Wan2.1_VAE.pth")
-    if not os.path.exists(vae_path):
-        raise RuntimeError(f'"Wan2.1_VAE.pth" does not exist!\nPlease save it to "{model_path}"')
+    if alt_vae != "none":
+        vae_path = folder_paths.get_full_path_or_raise("vae", alt_vae)
+        if not os.path.exists(vae_path):
+            raise RuntimeError(f'"{alt_vae}" does not exist!')
+    else:
+        vae_path = os.path.join(model_path, "Wan2.1_VAE.pth")
+        if not os.path.exists(vae_path):
+            raise RuntimeError(f'"Wan2.1_VAE.pth" does not exist!\nPlease save it to "{model_path}"')
     lq_path = os.path.join(model_path, "LQ_proj_in.ckpt")
     if not os.path.exists(lq_path):
         raise RuntimeError(f'"LQ_proj_in.ckpt" does not exist!\nPlease save it to "{model_path}"')
@@ -193,7 +197,8 @@ def init_pipeline(mode, device, dtype):
     pipe.enable_vram_management(num_persistent_param_in_dit=None)
     pipe.init_cross_kv(prompt_path=prompt_path)
     pipe.load_models_to_device(["dit","vae"])
-    
+    pipe.offload_model()
+
     return pipe
 
 class cqdm:
@@ -246,17 +251,170 @@ class cqdm:
     def __len__(self):
         return self.total
 
-class FlashVSRNode:
+def flashvsr(pipe, frames, scale, color_fix, tiled_vae, tiled_dit, tile_size, tile_overlap, unload_dit, sparse_ratio, kv_ratio, local_range, seed, force_offload):
+    _frames = frames
+    _device = pipe.device
+    dtype = pipe.torch_dtype
+
+    if frames.shape[0] < 21:
+        add = 21 - frames.shape[0]
+        last_frame = frames[-1:, :, :, :]
+        padding_frames = last_frame.repeat(add, 1, 1, 1)
+        _frames = torch.cat([frames, padding_frames], dim=0)
+        
+    if tiled_dit:
+        N, H, W, C = _frames.shape
+        num_aligned_frames = largest_8n1_leq(N + 4) - 4
+        
+        final_output_canvas = torch.zeros(
+            (num_aligned_frames, H * scale, W * scale, C), 
+            dtype=dtype, 
+            device="cpu"
+        )
+        weight_sum_canvas = torch.zeros_like(final_output_canvas)
+        tile_coords = calculate_tile_coords(H, W, tile_size, tile_overlap)
+        latent_tiles_cpu = []
+        
+        for i, (x1, y1, x2, y2) in enumerate(cqdm(tile_coords, desc="Processing Tiles")):
+            log(f"[FlashVSR] Processing tile {i+1}/{len(tile_coords)}: coords ({x1},{y1}) to ({x2},{y2})", message_type='info')
+            input_tile = _frames[:, y1:y2, x1:x2, :]
+            
+            LQ_tile, th, tw, F = prepare_input_tensor(input_tile, _device, scale=scale, dtype=dtype)
+            if not isinstance(pipe, FlashVSRTinyLongPipeline):
+                LQ_tile = LQ_tile.to(_device)
+                
+            output_tile_gpu = pipe(
+                prompt="", negative_prompt="", cfg_scale=1.0, num_inference_steps=1, seed=seed, tiled=tiled_vae,
+                LQ_video=LQ_tile, num_frames=F, height=th, width=tw, is_full_block=False, if_buffer=True,
+                topk_ratio=sparse_ratio*768*1280/(th*tw), kv_ratio=kv_ratio, local_range=local_range,
+                color_fix=color_fix, unload_dit=unload_dit, force_offload=force_offload
+            )
+            
+            processed_tile_cpu = tensor2video(output_tile_gpu).to("cpu")
+            
+            mask_nchw = create_feather_mask(
+                (processed_tile_cpu.shape[1], processed_tile_cpu.shape[2]),
+                tile_overlap * scale
+            ).to("cpu")
+            mask_nhwc = mask_nchw.permute(0, 2, 3, 1)
+            out_x1, out_y1 = x1 * scale, y1 * scale
+            
+            tile_H_scaled = processed_tile_cpu.shape[1]
+            tile_W_scaled = processed_tile_cpu.shape[2]
+            out_x2, out_y2 = out_x1 + tile_W_scaled, out_y1 + tile_H_scaled
+            final_output_canvas[:, out_y1:out_y2, out_x1:out_x2, :] += processed_tile_cpu * mask_nhwc
+            weight_sum_canvas[:, out_y1:out_y2, out_x1:out_x2, :] += mask_nhwc
+            
+            del LQ_tile, output_tile_gpu, processed_tile_cpu, input_tile
+            clean_vram()
+            
+        weight_sum_canvas[weight_sum_canvas == 0] = 1.0
+        final_output = final_output_canvas / weight_sum_canvas
+    else:
+        log("[FlashVSR] Preparing frames...")
+        LQ, th, tw, F = prepare_input_tensor(_frames, _device, scale=scale, dtype=dtype)
+        if not isinstance(pipe, FlashVSRTinyLongPipeline):
+            LQ = LQ.to(_device)
+        log(f"[FlashVSR] Processing {frames.shape[0]} frames...", message_type='info')
+        
+        video = pipe(
+            prompt="", negative_prompt="", cfg_scale=1.0, num_inference_steps=1, seed=seed, tiled=tiled_vae,
+            progress_bar_cmd=cqdm, LQ_video=LQ, num_frames=F, height=th, width=tw, is_full_block=False, if_buffer=True,
+            topk_ratio=sparse_ratio*768*1280/(th*tw), kv_ratio=kv_ratio, local_range=local_range,
+            color_fix = color_fix, unload_dit=unload_dit, force_offload=force_offload
+        )
+        
+        final_output = tensor2video(video).to('cpu')
+        
+        del video, LQ
+        clean_vram()
+        
+    log("[FlashVSR] Done.", message_type='info')
+    if frames.shape[0] == 1:
+        final_output = final_output.to(_device)
+        stacked_image_tensor = torch.median(final_output, dim=0).values.unsqueeze(0).to('cpu')
+        del final_output
+        clean_vram()
+        return stacked_image_tensor
+    
+    return final_output[:frames.shape[0], :, :, :]
+
+class FlashVSRNodeInitPipe:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "frames": ("IMAGE", {
-                    "tooltip": "Sequential video frames as IMAGE tensor batch"
-                }),
                 "mode": (["tiny", "tiny-long", "full"], {
                     "default": "tiny",
                     "tooltip": 'Using "tiny-long" mode can significantly reduce VRAM used with long video input.'
+                }),
+                "alt_vae": (["none"] + folder_paths.get_filename_list("vae"), {
+                    "default": "none",
+                    "tooltip": 'Replaces the built-in VAE, only available in "full" mode.'
+                }),
+                "force_offload": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Offload all weights to CPU after running a workflow to free up VRAM."
+                }),
+                "precision": (["fp16", "bf16"], {
+                    "default": "bf16",
+                    "tooltip": "Data and inference precision."
+                }),
+                "device": (device_choices, {
+                    "default": device_choices[0],
+                    "tooltip": "Device to load the weights, default: auto (CUDA if available, else CPU)"
+                }),
+                "attention_mode": (["sparse_sage_attention", "block_sparse_attention"], {
+                    "default": "sparse_sage_attention",
+                    "tooltip": '"sparse_sage_attention" is available for sm_75 to sm_120\n"block_sparse_attention" is available for sm_80 to sm_100'
+                }),
+            }
+        }
+    
+    RETURN_TYPES = ("PIPE",)
+    RETURN_NAMES = ("pipe",)
+    FUNCTION = "main"
+    CATEGORY = "FlashVSR"
+    DESCRIPTION = 'Download the entire "FlashVSR" folder with all the files inside it from "https://huggingface.co/JunhaoZhuang/FlashVSR" and put it in the "ComfyUI/models"'
+    
+    def main(self, mode, alt_vae, force_offload, precision, device, attention_mode):
+        _device = device
+        if device == "auto":
+            _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else device
+        if _device == "auto" or _device not in device_choices:
+            raise RuntimeError("No devices found to run FlashVSR!")
+            
+        if _device.startswith("cuda"):
+            torch.cuda.set_device(_device)
+            
+        if attention_mode == "sparse_sage_attention":
+            wan_video_dit.USE_BLOCK_ATTN = False
+        else:
+            wan_video_dit.USE_BLOCK_ATTN = True
+            
+        dtype_map = {
+            "fp32": torch.float32,
+            "fp16": torch.float16,
+            "bf16": torch.bfloat16,
+        }
+        try:
+            dtype = dtype_map[precision]
+        except:
+            dtype = torch.bfloat16
+            
+        pipe = init_pipeline(mode, _device, dtype, alt_vae=alt_vae)
+        return((pipe, force_offload),)
+
+class FlashVSRNodeAdv:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "pipe": ("PIPE", {
+                    "tooltip": "FlashVSR pipeline"
+                }),
+                "frames": ("IMAGE", {
+                    "tooltip": "Sequential video frames as IMAGE tensor batch"
                 }),
                 "scale": ("INT", {
                     "default": 2,
@@ -319,17 +477,53 @@ class FlashVSRNode:
                     "min": 0,
                     "max": 1125899906842624
                 }),
-                "device": (device_choices, {
-                    "default": device_choices[0],
-                    "tooltip": "Device to load the weights, default: auto (CUDA if available, else CPU)"
+            }
+        }
+    
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "main"
+    CATEGORY = "FlashVSR"
+    #DESCRIPTION = ""
+    
+    def main(self, pipe, frames, scale, color_fix, tiled_vae, tiled_dit, tile_size, tile_overlap, unload_dit, sparse_ratio, kv_ratio, local_range, seed):
+        _pipe, force_offload = pipe
+        output = flashvsr(_pipe, frames, scale, color_fix, tiled_vae, tiled_dit, tile_size, tile_overlap, unload_dit, sparse_ratio, kv_ratio, local_range, seed, force_offload)
+        return(output,)
+
+class FlashVSRNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "frames": ("IMAGE", {
+                    "tooltip": "Sequential video frames as IMAGE tensor batch"
                 }),
-                "precision": (["fp16", "bf16"], {
-                    "default": "bf16",
-                    "tooltip": "Data and inference precision."
+                "mode": (["tiny", "tiny-long", "full"], {
+                    "default": "tiny",
+                    "tooltip": 'Using "tiny-long" mode can significantly reduce VRAM used with long video input.'
                 }),
-                "attention_mode": (["sparse_sage_attention", "block_sparse_attention"], {
-                    "default": "sparse_sage_attention",
-                    "tooltip": '"sparse_sage_attention" is available for sm_75 to sm_120\n"block_sparse_attention" is available for sm_80 to sm_100'
+                "scale": ("INT", {
+                    "default": 2,
+                    "min": 2,
+                    "max": 4,
+                }),
+                "tiled_vae": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Disable tiling: faster decode but higher VRAM usage.\nSet to True for lower memory consumption at the cost of speed."
+                }),
+                "tiled_dit": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Significantly reduces VRAM usage at the cost of speed."
+                }),
+                "unload_dit": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Unload DiT before decoding to reduce VRAM peak at the cost of speed."
+                }),
+                "seed": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 1125899906842624
                 }),
             }
         }
@@ -340,127 +534,24 @@ class FlashVSRNode:
     CATEGORY = "FlashVSR"
     DESCRIPTION = 'Download the entire "FlashVSR" folder with all the files inside it from "https://huggingface.co/JunhaoZhuang/FlashVSR" and put it in the "ComfyUI/models"'
     
-    def main(self, frames, mode, scale, color_fix, tiled_vae, tiled_dit, tile_size, tile_overlap, unload_dit, sparse_ratio, kv_ratio, local_range, seed, device, precision, attention_mode):
-        _device = device
-        if device == "auto":
-            _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else device
+    def main(self, frames, mode, scale, tiled_vae, tiled_dit, unload_dit, seed):
+        wan_video_dit.USE_BLOCK_ATTN = False
+        _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else "auto"
         if _device == "auto" or _device not in device_choices:
             raise RuntimeError("No devices found to run FlashVSR!")
-        
-        if _device.startswith("cuda"):
-            torch.cuda.set_device(_device)
-        
-        if tiled_dit and (tile_overlap > tile_size / 2):
-            raise ValueError('The "tile_overlap" must be less than half of "tile_size"!')
-        
-        if attention_mode == "sparse_sage_attention":
-            wan_video_dit.USE_BLOCK_ATTN = False
-        else:
-            wan_video_dit.USE_BLOCK_ATTN = True
-        
-        _frames = frames
-        if frames.shape[0] < 21:
-            add = 21 - frames.shape[0]
-            last_frame = frames[-1:, :, :, :]
-            padding_frames = last_frame.repeat(add, 1, 1, 1)
-            _frames = torch.cat([frames, padding_frames], dim=0)
-            #raise ValueError(f"Number of frames must be at least 21, got {frames.shape[0]}")
-        
-        dtype_map = {
-            "fp32": torch.float32,
-            "fp16": torch.float16,
-            "bf16": torch.bfloat16,
-        }
-        try:
-            dtype = dtype_map[precision]
-        except:
-            dtype = torch.bfloat16
-
-        if tiled_dit:
-            N, H, W, C = _frames.shape
-            num_aligned_frames = largest_8n1_leq(N + 4) - 4
             
-            final_output_canvas = torch.zeros(
-                (num_aligned_frames, H * scale, W * scale, C), 
-                dtype=torch.float32, 
-                device="cpu"
-            )
-            weight_sum_canvas = torch.zeros_like(final_output_canvas)
-            tile_coords = calculate_tile_coords(H, W, tile_size, tile_overlap)
-            latent_tiles_cpu = []
-            
-            pipe = init_pipeline(mode, _device, dtype)
-            
-            for i, (x1, y1, x2, y2) in enumerate(cqdm(tile_coords, desc="Processing Tiles")):
-                log(f"[FlashVSR] Processing tile {i+1}/{len(tile_coords)}: coords ({x1},{y1}) to ({x2},{y2})", message_type='info')
-                input_tile = _frames[:, y1:y2, x1:x2, :]
-                
-                LQ_tile, th, tw, F = prepare_input_tensor(input_tile, _device, scale=scale, dtype=dtype)
-                if "long" not in mode:
-                    LQ_tile = LQ_tile.to(_device)
-                
-                output_tile_gpu = pipe(
-                    prompt="", negative_prompt="", cfg_scale=1.0, num_inference_steps=1, seed=seed, tiled=tiled_vae,
-                    LQ_video=LQ_tile, num_frames=F, height=th, width=tw, is_full_block=False, if_buffer=True,
-                    topk_ratio=sparse_ratio*768*1280/(th*tw), kv_ratio=kv_ratio, local_range=local_range,
-                    color_fix=color_fix, unload_dit=unload_dit
-                )
-                
-                processed_tile_cpu = tensor2video(output_tile_gpu).to("cpu")
-                
-                mask_nchw = create_feather_mask(
-                    (processed_tile_cpu.shape[1], processed_tile_cpu.shape[2]),
-                    tile_overlap * scale
-                ).to("cpu")
-                mask_nhwc = mask_nchw.permute(0, 2, 3, 1)
-                out_x1, out_y1 = x1 * scale, y1 * scale
-                
-                tile_H_scaled = processed_tile_cpu.shape[1]
-                tile_W_scaled = processed_tile_cpu.shape[2]
-                out_x2, out_y2 = out_x1 + tile_W_scaled, out_y1 + tile_H_scaled
-                final_output_canvas[:, out_y1:out_y2, out_x1:out_x2, :] += processed_tile_cpu * mask_nhwc
-                weight_sum_canvas[:, out_y1:out_y2, out_x1:out_x2, :] += mask_nhwc
-                
-                del LQ_tile, output_tile_gpu, processed_tile_cpu, input_tile
-                clean_vram()
-                
-            weight_sum_canvas[weight_sum_canvas == 0] = 1.0
-            final_output = final_output_canvas / weight_sum_canvas
-        else:
-            log("[FlashVSR] Preparing frames...")
-            LQ, th, tw, F = prepare_input_tensor(_frames, _device, scale=scale, dtype=dtype)
-            if "long" not in mode:
-                LQ = LQ.to(_device)
-            
-            pipe = init_pipeline(mode, _device, dtype)
-            log(f"[FlashVSR] Processing {frames.shape[0]} frames...", message_type='info')
-            
-            video = pipe(
-                prompt="", negative_prompt="", cfg_scale=1.0, num_inference_steps=1, seed=seed, tiled=tiled_vae,
-                progress_bar_cmd=cqdm, LQ_video=LQ, num_frames=F, height=th, width=tw, is_full_block=False, if_buffer=True,
-                topk_ratio=sparse_ratio*768*1280/(th*tw), kv_ratio=kv_ratio, local_range=local_range,
-                color_fix = color_fix, unload_dit=unload_dit
-            )
-            
-            final_output = tensor2video(video).to('cpu')
-            
-            del pipe, video, LQ
-            clean_vram()
-        
-        log("[FlashVSR] Done.", message_type='info')
-        if frames.shape[0] == 1:
-            final_output = final_output.to(_device)
-            stacked_image_tensor = torch.median(final_output, dim=0).unsqueeze(0).to('cpu')
-            del final_output
-            clean_vram()
-            return (stacked_image_tensor,)
-        
-        return (final_output[:frames.shape[0], :, :, :],)
+        pipe = init_pipeline(mode, _device, torch.bfloat16)
+        output = flashvsr(pipe, frames, scale, True, tiled_vae, tiled_dit, 256, 24, unload_dit, 2.0, 3.0, 11, seed, True)
+        return(output,)
 
 NODE_CLASS_MAPPINGS = {
     "FlashVSRNode": FlashVSRNode,
+    "FlashVSRNodeAdv": FlashVSRNodeAdv,
+    "FlashVSRInitPipe": FlashVSRNodeInitPipe,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "FlashVSRNode": "FlashVSR Ultra-Fast",
+    "FlashVSRNodeAdv": "FlashVSR Ultra-Fast (Advanced)",
+    "FlashVSRInitPipe": "Init FlashVSR Pipeline",
 }
