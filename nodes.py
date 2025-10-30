@@ -540,7 +540,7 @@ class FlashVSRNode:
         if _device == "auto" or _device not in device_choices:
             raise RuntimeError("No devices found to run FlashVSR!")
             
-        pipe = init_pipeline(mode, _device, torch.bfloat16)
+        pipe = init_pipeline(mode, _device, torch.float16)
         output = flashvsr(pipe, frames, scale, True, tiled_vae, tiled_dit, 256, 24, unload_dit, 2.0, 3.0, 11, seed, True)
         return(output,)
 

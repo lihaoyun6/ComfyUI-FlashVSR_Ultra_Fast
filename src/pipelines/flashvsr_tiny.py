@@ -265,8 +265,6 @@ class FlashVSRTinyPipeline(BasePipeline):
         # Scheduler
         self.scheduler.set_timesteps(1, denoising_strength=1.0, shift=5.0)
         self.load_models_to_device([])
-        del ctx
-        clean_vram()
 
     def prepare_unified_sequence_parallel(self):
         return {"use_unified_sequence_parallel": self.use_unified_sequence_parallel}
@@ -319,7 +317,7 @@ class FlashVSRTinyPipeline(BasePipeline):
         tile_size=(60, 104),
         tile_stride=(30, 52),
         tea_cache_l1_thresh=None,
-        tea_cache_model_id="Wan2.1-T2V-14B",
+        tea_cache_model_id="Wan2.1-T2V-1.3B",
         progress_bar_cmd=tqdm,
         progress_bar_st=None,
         LQ_video=None,
