@@ -553,5 +553,5 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "FlashVSRNode": "FlashVSR Ultra-Fast",
     "FlashVSRNodeAdv": "FlashVSR Ultra-Fast (Advanced)",
-    "FlashVSRInitPipe": "Init FlashVSR Pipeline",
+    "FlashVSRInitPipe": "FlashVSR Init Pipeline",
 }
