@@ -41,6 +41,14 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast.git
 python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 ```
+> 📢: For Turing or older GPU, please install `triton<3.3.0`:  
+
+> ```bash
+# Windows
+python -m pip install -U triton-windows<3.3.0
+# Linux
+python -m pip install -U triton<3.3.0
+```
 
 #### models:
 

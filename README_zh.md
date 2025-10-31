@@ -40,6 +40,15 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast.git
 python -m pip install -r ComfyUI-FlashVSR_Ultra_Fast/requirements.txt
 ```
+> 📢: 要在RTX20系或更早的GPU上运行, 请安装`triton<3.3.0`:  
+
+> ```bash
+# Windows
+python -m pip install -U triton-windows<3.3.0
+# Linux
+python -m pip install -U triton<3.3.0
+```
+
 #### 模型下载:
 - 从[这里](https://huggingface.co/JunhaoZhuang/FlashVSR)下载整个`FlashVSR`文件夹和它里面的所有文件, 并将其放到`ComfyUI/models`目录中。  
 
