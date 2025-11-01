@@ -14,22 +14,8 @@ from einops import rearrange
 from huggingface_hub import snapshot_download
 from .src import ModelManager, FlashVSRFullPipeline, FlashVSRTinyPipeline, FlashVSRTinyLongPipeline
 from .src.models.TCDecoder import build_tcdecoder
-from .src.models.utils import clean_vram, Buffer_LQ4x_Proj
+from .src.models.utils import clean_vram, get_device_list, Buffer_LQ4x_Proj
 from .src.models import wan_video_dit
-
-def get_device_list():
-    devs = ["auto"]
-    try:
-        if hasattr(torch, "cuda") and hasattr(torch.cuda, "is_available") and torch.cuda.is_available():
-            devs += [f"cuda:{i}" for i in range(torch.cuda.device_count())]
-    except Exception:
-        pass
-    try:
-        if hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available():
-            devs += [f"mps:{i}" for i in range(torch.mps.device_count())]
-    except Exception:
-        pass
-    return devs
 
 device_choices = get_device_list()
 
@@ -380,7 +366,7 @@ class FlashVSRNodeInitPipe:
     def main(self, mode, alt_vae, force_offload, precision, device, attention_mode):
         _device = device
         if device == "auto":
-            _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else device
+            _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else device
         if _device == "auto" or _device not in device_choices:
             raise RuntimeError("No devices found to run FlashVSR!")
             
@@ -536,7 +522,7 @@ class FlashVSRNode:
     
     def main(self, frames, mode, scale, tiled_vae, tiled_dit, unload_dit, seed):
         wan_video_dit.USE_BLOCK_ATTN = False
-        _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else "auto"
+        _device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "auto"
         if _device == "auto" or _device not in device_choices:
             raise RuntimeError("No devices found to run FlashVSR!")
             

@@ -119,7 +119,7 @@ class BasePipeline(torch.nn.Module):
         # fresh the cuda cache
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        if torch.mps.is_available():
+        if torch.backends.mps.is_available():
             torch.mps.empty_cache()
 
     
