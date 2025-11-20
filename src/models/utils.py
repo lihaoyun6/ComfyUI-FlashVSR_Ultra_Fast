@@ -302,15 +302,16 @@ class Buffer_LQ4x_Proj(nn.Module):
         for i in range(iter_):
             x = self.pixel_shuffle(video[:,:,i*4:(i+1)*4,:,:])
             cache1_x = x[:, :, -CACHE_T:, :, :].clone()
-            self.cache['conv1'] = cache1_x
             x = self.conv1(x, self.cache['conv1'])
+            self.cache['conv1'] = cache1_x
             x = self.norm1(x)
             x = self.act1(x)
             cache2_x = x[:, :, -CACHE_T:, :, :].clone()
-            self.cache['conv2'] = cache2_x
             if i == 0:
+                self.cache['conv2'] = cache2_x
                 continue
             x = self.conv2(x, self.cache['conv2'])
+            self.cache['conv2'] = cache2_x
             x = self.norm2(x)
             x = self.act2(x)
             out_x.append(x)
@@ -335,8 +336,8 @@ class Buffer_LQ4x_Proj(nn.Module):
             video_clip = torch.cat([first_frame, video_clip], dim=2)
             x = self.pixel_shuffle(video_clip)
             cache1_x = x[:, :, -CACHE_T:, :, :].clone()
-            self.cache['conv1'] = cache1_x
             x = self.conv1(x, self.cache['conv1'])
+            self.cache['conv1'] = cache1_x
             x = self.norm1(x)
             x = self.act1(x)
             cache2_x = x[:, :, -CACHE_T:, :, :].clone()
@@ -346,13 +347,13 @@ class Buffer_LQ4x_Proj(nn.Module):
         else:
             x = self.pixel_shuffle(video_clip)
             cache1_x = x[:, :, -CACHE_T:, :, :].clone()
-            self.cache['conv1'] = cache1_x
             x = self.conv1(x, self.cache['conv1'])
+            self.cache['conv1'] = cache1_x
             x = self.norm1(x)
             x = self.act1(x)
             cache2_x = x[:, :, -CACHE_T:, :, :].clone()
-            self.cache['conv2'] = cache2_x
             x = self.conv2(x, self.cache['conv2'])
+            self.cache['conv2'] = cache2_x
             x = self.norm2(x)
             x = self.act2(x)
             out_x = rearrange(x, 'b c f h w -> b (f h w) c')
