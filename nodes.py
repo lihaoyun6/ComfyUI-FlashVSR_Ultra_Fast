@@ -138,26 +138,19 @@ def create_feather_mask(size, overlap):
 
 def init_pipeline(model, mode, device, dtype, alt_vae="none"):
     model_downlod(model_name="JunhaoZhuang/"+model)
-    model_path = os.path.join(folder_paths.models_dir, model)
-    if not os.path.exists(model_path):
-        raise RuntimeError(f'Model directory does not exist!\nPlease save all weights to "{model_path}"')
-    ckpt_path = os.path.join(model_path, "diffusion_pytorch_model_streaming_dmd.safetensors")
-    if not os.path.exists(ckpt_path):
-        raise RuntimeError(f'"diffusion_pytorch_model_streaming_dmd.safetensors" does not exist!\nPlease save it to "{model_path}"')
+    model_paths = folder_paths.get_folder_paths(model)
+    if not model_paths:
+        raise RuntimeError(f'Model directory does not exist!\nPlease save all weights to "models/{model}"')
+    ckpt_path = folder_paths.get_full_path_or_raise(model, "diffusion_pytorch_model_streaming_dmd.safetensors")
+
     if alt_vae != "none":
         vae_path = folder_paths.get_full_path_or_raise("vae", alt_vae)
-        if not os.path.exists(vae_path):
-            raise RuntimeError(f'"{alt_vae}" does not exist!')
     else:
-        vae_path = os.path.join(model_path, "Wan2.1_VAE.pth")
-        if not os.path.exists(vae_path):
-            raise RuntimeError(f'"Wan2.1_VAE.pth" does not exist!\nPlease save it to "{model_path}"')
-    lq_path = os.path.join(model_path, "LQ_proj_in.ckpt")
-    if not os.path.exists(lq_path):
-        raise RuntimeError(f'"LQ_proj_in.ckpt" does not exist!\nPlease save it to "{model_path}"')
-    tcd_path = os.path.join(model_path, "TCDecoder.ckpt")
-    if not os.path.exists(tcd_path):
-        raise RuntimeError(f'"TCDecoder.ckpt" does not exist!\nPlease save it to "{model_path}"')
+        vae_path = folder_paths.get_full_path_or_raise(model, "Wan2.1_VAE.pth")
+
+    lq_path = folder_paths.get_full_path_or_raise(model, "LQ_proj_in.ckpt")
+    tcd_path = folder_paths.get_full_path_or_raise(model, "TCDecoder.ckpt")
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
     prompt_path = os.path.join(current_dir, "posi_prompt.pth")
     
