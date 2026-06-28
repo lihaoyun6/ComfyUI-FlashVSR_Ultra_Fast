@@ -378,6 +378,9 @@ class FlashVSRNodeInitPipe:
             
         if _device.startswith("cuda"):
             torch.cuda.set_device(_device)
+            if precision == "bf16" and torch.cuda.get_device_capability(_device)[0] < 8:
+                log("[FlashVSR] bf16 is not supported on this CUDA card; using fp16.", message_type="warning")
+                precision = "fp16"
             
         if attention_mode == "sparse_sage_attention":
             wan_video_dit.USE_BLOCK_ATTN = False

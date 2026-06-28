@@ -257,12 +257,43 @@ def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, num_heads
             ).unsqueeze(0)
             x = rearrange(x, "b s n d -> b s (n d)", n=num_heads)
         else:
-            x = sparse_sageattn(
-                q, k, v,
-                mask_id=base_blockmask.to(torch.int8),
-                is_causal=False,
-                tensor_layout="HND"
-            )
+            use_sparse_sage = not q.is_cuda or torch.cuda.get_device_capability(q.device)[0] >= 8
+            if use_sparse_sage:
+                try:
+                    x = sparse_sageattn(
+                        q, k, v,
+                        mask_id=base_blockmask.to(torch.int8),
+                        is_causal=False,
+                        tensor_layout="HND"
+                    )
+                except RuntimeError as e:
+                    if "PassManager::run failed" not in str(e):
+                        raise
+                    use_sparse_sage = False
+            if not use_sparse_sage:
+                # ponytail: slow sm75 fallback, one sparse block at a time instead of a dense mask.
+                mask = base_blockmask.bool()
+                x = torch.empty_like(q)
+                for b in range(q.shape[0]):
+                    for head in range(q.shape[1]):
+                        for q_block in range(mask.shape[-2]):
+                            q_start = q_block * 128
+                            q_end = min(q_start + 128, seqlen)
+                            if q_start >= q_end:
+                                break
+                            k_blocks = torch.nonzero(mask[b, head, q_block], as_tuple=False).flatten().tolist()
+                            if not k_blocks:
+                                k_blocks = range(mask.shape[-1])
+                            k_idx = torch.cat([
+                                torch.arange(kb * 64, min((kb + 1) * 64, seqlen_kv), device=q.device)
+                                for kb in k_blocks
+                                if kb * 64 < seqlen_kv
+                            ])
+                            x[b:b + 1, head:head + 1, q_start:q_end] = F.scaled_dot_product_attention(
+                                q[b:b + 1, head:head + 1, q_start:q_end],
+                                k[b:b + 1, head:head + 1, k_idx],
+                                v[b:b + 1, head:head + 1, k_idx],
+                            )
             x = rearrange(x, "b n s d -> b s (n d)", n=num_heads)
     elif compatibility_mode:
         q = rearrange(q, "b s (n d) -> b n s d", n=num_heads)
@@ -284,7 +315,7 @@ def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, num_heads
         v = rearrange(v, "b s (n d) -> b s n d", n=num_heads)
         x = flash_attn.flash_attn_func(q, k, v)
         x = rearrange(x, "b s n d -> b s (n d)", n=num_heads)
-    elif SAGE_ATTN_AVAILABLE:
+    elif SAGE_ATTN_AVAILABLE and (not q.is_cuda or torch.cuda.get_device_capability(q.device)[0] >= 8):
         q = rearrange(q, "b s (n d) -> b n s d", n=num_heads)
         k = rearrange(k, "b s (n d) -> b n s d", n=num_heads)
         v = rearrange(v, "b s (n d) -> b n s d", n=num_heads)
@@ -861,4 +892,3 @@ class WanModelStateDictConverter:
         else:
             config = {}
         return state_dict, config
-    
