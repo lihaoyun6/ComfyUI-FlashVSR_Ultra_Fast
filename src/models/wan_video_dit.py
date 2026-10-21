@@ -11,13 +11,14 @@ from .utils import hash_state_dict_keys
 
 try:
     import flash_attn_interface
-    FLASH_ATTN_3_AVAILABLE = True
+    # Other custom nodes can register a stub module whose attention function is None
+    FLASH_ATTN_3_AVAILABLE = callable(getattr(flash_attn_interface, "flash_attn_func", None))
 except ModuleNotFoundError:
     FLASH_ATTN_3_AVAILABLE = False
 
 try:
     import flash_attn
-    FLASH_ATTN_2_AVAILABLE = True
+    FLASH_ATTN_2_AVAILABLE = callable(getattr(flash_attn, "flash_attn_func", None))
 except ModuleNotFoundError:
     FLASH_ATTN_2_AVAILABLE = False
 
